@@ -1,0 +1,84 @@
+name: CI — Build & Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Build image & smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t day10-pipeline-api:ci \
+            -f day10/lab/Dockerfile \
+            day10/lab
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name day10-ci \
+            -p 8000:8000 \
+            -e PORT=8000 \
+            day10-pipeline-api:ci
+
+      - name: Wait for startup
+        run: |
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health; then
+              echo "✅ App is up"
+              exit 0
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 2
+          done
+          echo "❌ Health check timed out"
+          docker logs day10-ci
+          exit 1
+
+      - name: Test health endpoint
+        run: |
+          STATUS=$(curl -sf http://localhost:8000/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['status'])")
+          test "$STATUS" = "ok" && echo "✅ /health ok" || (echo "❌ /health failed"; exit 1)
+
+      - name: Test root endpoint
+        run: |
+          curl -sf http://localhost:8000/ | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assert d['service'] == 'Day 10 Data Pipeline API', f'Unexpected: {d}'
+          print('✅ / ok')
+          "
+
+      - name: Test pipeline run
+        run: |
+          curl -sf -X POST http://localhost:8000/pipeline/run \
+            -H 'Content-Type: application/json' \
+            -d '{}' | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assert d['status'] == 'ok', f'Pipeline failed: {d}'
+          assert d['raw_records'] > 0, 'No records processed'
+          print(f'✅ pipeline/run ok — {d[\"cleaned_records\"]} cleaned, {d[\"quarantine_records\"]} quarantine')
+          "
+
+      - name: Test manifests endpoint
+        run: |
+          curl -sf http://localhost:8000/pipeline/manifests | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assert len(d['manifests']) > 0, 'No manifests found'
+          print(f'✅ pipeline/manifests ok — {d[\"total\"]} manifests')
+          "
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs day10-ci

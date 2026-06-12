@@ -1,0 +1,38 @@
+name: CD — Deploy to Railway
+
+on:
+  workflow_run:
+    workflows: ["CI — Build & Test"]
+    branches: ["main"]
+    types: [completed]
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service day10-data-pipeline-api \
+            --detach
+
+      - name: Verify deployment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Waiting for Railway deployment..."
+          sleep 30
+          STATUS=$(curl -sf https://day10-data-pipeline-api-production.up.railway.app/health \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          test "$STATUS" = "ok" && echo "✅ Production deployment ok" || (echo "❌ Production health check failed"; exit 1)
