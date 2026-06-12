@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: day10-data-pipeline-api
+    runtime: docker
+    dockerfilePath: ./day10/lab/Dockerfile
+    dockerContext: ./day10/lab
+    region: singapore
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: CHROMA_DB_PATH
+        value: ./chroma_db
+      - key: CHROMA_COLLECTION
+        value: day10_kb
+      - key: FRESHNESS_SLA_HOURS
+        value: "24"
+      - key: OPENAI_API_KEY
+        sync: false
