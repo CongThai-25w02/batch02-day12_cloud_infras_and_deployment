@@ -196,27 +196,57 @@ docker compose up --scale agent=3
 | **Conversation history** | 5 | Maintains context across requests |
 | **Error handling** | 5 | Graceful error responses |
 
-**Test:**
+**Test: Local Docker deployment (before cloud)**
+
+```bash
+# Build Docker image (from project root)
+docker build -f 02-docker/production/Dockerfile -t agent-production:latest .
+
+# Run container
+docker run -d -p 8000:8000 --name agent-test agent-production:latest
+
+# Wait for startup
+sleep 3
+
+# Test health
+curl http://localhost:8000/health
+# Should return: {"status":"ok","uptime_seconds":...,"container":true}
+```
+
+**Test: API endpoints**
+
 ```bash
 # Test basic functionality
-curl -X POST $URL/ask \
-  -H "X-API-Key: $KEY" \
+curl -X POST "http://localhost:8000/ask?question=What%20is%20Docker%3F" \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "test", "question": "Hello"}'
+  -d '{"user_id": "test"}'
 
 # Test conversation
-curl -X POST $URL/ask \
-  -H "X-API-Key: $KEY" \
+curl -X POST "http://localhost:8000/ask?question=What%20did%20I%20just%20ask%3F" \
   -H "Content-Type: application/json" \
-  -d '{"user_id": "test", "question": "What did I just say?"}'
+  -d '{"user_id": "test"}'
 # Should reference previous message
 
 # Test error handling
-curl -X POST $URL/ask \
-  -H "X-API-Key: $KEY" \
+curl -X POST "http://localhost:8000/ask" \
   -H "Content-Type: application/json" \
   -d '{"invalid": "data"}'
 # Should return 422 with clear error message
+```
+
+**Windows PowerShell tests:**
+
+```powershell
+# Test health
+$resp = Invoke-WebRequest -Uri "http://localhost:8000/health" -Method GET
+Write-Host "Status: $($resp.StatusCode)"
+$resp.Content | ConvertFrom-Json
+
+# Test ask endpoint
+$body = @{"user_id"="test"} | ConvertTo-Json
+$resp = Invoke-WebRequest -Uri "http://localhost:8000/ask?question=What%20is%20Docker%3F" `
+  -Method POST -ContentType "application/json" -Body $body
+$resp.Content | ConvertFrom-Json
 ```
 
 ---
@@ -230,16 +260,47 @@ curl -X POST $URL/ask \
 | **docker-compose.yml** | 4 | Complete stack with agent + redis |
 | **Environment config** | 3 | All config from env vars |
 
+**Grading: Build & Run Student's Image**
+
+```bash
+# Navigate to student's submission
+cd /path/to/student/submission
+
+# Build image
+docker build -t student-agent:test .
+
+# Check image size
+docker images student-agent:test
+# Should be < 500 MB
+
+# Run container
+docker run -d -p 8000:8000 --name student-test student-agent:test
+
+# Wait for startup
+sleep 5
+
+# Test health endpoint
+curl http://localhost:8000/health
+# Must return 200 OK
+
+# Test functionality
+curl -X POST "http://localhost:8000/ask?question=test" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "grader"}'
+# Should return valid response (200 OK)
+
+# Cleanup
+docker stop student-test
+docker rm student-test
+```
+
 **Checklist:**
 
 ```bash
-# Check Dockerfile
+# Check Dockerfile quality
 grep -q "FROM.*as builder" Dockerfile  # Multi-stage
 grep -q "FROM.*slim" Dockerfile        # Slim base image
-
-# Check image size
-docker images | grep student-agent
-# Should be < 500 MB
+grep -q "USER appuser" Dockerfile      # Non-root user (security)
 
 # Check docker-compose
 grep -q "redis:" docker-compose.yml
@@ -248,6 +309,33 @@ grep -q "agent:" docker-compose.yml
 # Check env vars
 grep -q "os.getenv" app/*.py
 grep -q "Settings" app/config.py
+
+# Test docker-compose stack
+docker compose up -d
+sleep 10
+curl http://localhost/health  # Via Nginx
+docker compose down
+```
+
+**Windows PowerShell verification:**
+
+```powershell
+# Build and test
+docker build -t student-agent:test .
+$size = docker images student-agent:test | Select-Object -Skip 1 | ForEach-Object {($_ -split '\s+')[4]}
+Write-Host "Image size: $size"
+
+# Run and test
+docker run -d -p 8000:8000 --name student-test student-agent:test
+Start-Sleep -Seconds 5
+
+# Health check
+$resp = Invoke-WebRequest -Uri "http://localhost:8000/health"
+Write-Host "Health status: $($resp.StatusCode)"
+
+# Cleanup
+docker stop student-test
+docker rm student-test
 ```
 
 ---
@@ -340,7 +428,84 @@ ls railway.toml || ls render.yaml
 
 ---
 
-## Automated Grading Script
+## Docker Deployment Verification Guide
+
+Quick steps to verify student submissions work in Docker:
+
+### Pre-grading Setup
+
+```bash
+# Have Docker running
+docker --version
+
+# Have test image ready (from Day 12 lab)
+docker images agent-production:latest
+```
+
+### Per-Student Submission (5 minutes)
+
+1. **Extract & Build** (1 min)
+   ```bash
+   cd /tmp/student-submission-123
+   docker build -t student-agent:test .
+   ```
+
+2. **Check Size** (1 min)
+   ```bash
+   docker images student-agent:test
+   # Expected: < 500 MB
+   ```
+
+3. **Run & Test** (2 min)
+   ```bash
+   docker run -d -p 8000:8000 --name student-test student-agent:test
+   sleep 5
+   
+   # Must return 200
+   curl http://localhost:8000/health
+   
+   # Must return valid response
+   curl -X POST "http://localhost:8000/ask?question=test" \
+     -H "Content-Type: application/json" \
+     -d '{"user_id": "grader"}'
+   ```
+
+4. **Cleanup** (1 min)
+   ```bash
+   docker stop student-test
+   docker rm student-test
+   docker rmi student-agent:test
+   ```
+
+### Quick Scoring
+
+| Outcome | Score | Notes |
+|---------|-------|-------|
+| ✅ Builds + runs + responds | 15/15 | Full credit |
+| ✅ Builds + runs, slow response | 12/15 | Startup issue |
+| ✅ Builds, crashes | 7/15 | Runtime error |
+| ❌ Dockerfile invalid | 0/15 | Can't grade |
+
+### Troubleshooting
+
+**Port already in use:**
+```bash
+docker stop $(docker ps -q --filter ancestor=student-agent:test)
+```
+
+**Image won't build:**
+```bash
+# Check Dockerfile syntax
+docker build -f Dockerfile .  # Should show clear error
+```
+
+**Container exits immediately:**
+```bash
+docker run -it student-agent:test /bin/bash
+# Debug inside container
+```
+
+---
 
 ```python
 #!/usr/bin/env python3

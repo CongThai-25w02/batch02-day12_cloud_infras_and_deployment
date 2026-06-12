@@ -41,6 +41,7 @@ Sau khi hoàn thành lab này, bạn sẽ:
 | **Part 4** | 40 phút | API Security |
 | **Part 5** | 40 phút | Scaling & Reliability |
 | **Part 6** | 60 phút | Final Project |
+| **Part 7** | 40 phút | Data Pipeline & Observability (Day 10) |
 
 ---
 
@@ -77,6 +78,8 @@ Tìm:
 - Không xử lý shutdown
 
 </details>
+
+
 
 ###  Exercise 1.2: Chạy basic version
 
@@ -149,7 +152,10 @@ cd ../../02-docker/develop
 ###  Exercise 2.2: Build và run
 
 ```bash
-# Build image
+# Quay về project root trước khi build
+cd ../../
+
+# Build image (build context là project root)
 docker build -f 02-docker/develop/Dockerfile -t my-agent:develop .
 
 # Run container
@@ -169,25 +175,37 @@ docker images my-agent:develop
 ###  Exercise 2.3: Multi-stage build
 
 ```bash
-cd ../production
+cd 02-docker/production
 ```
+
+> Windows PowerShell note: nếu đang dùng PowerShell, bạn có thể chạy `cd .\02-docker\production`.
 
 **Nhiệm vụ:** Đọc `Dockerfile` và tìm:
 - Stage 1 làm gì?
 - Stage 2 làm gì?
 - Tại sao image nhỏ hơn?
 
-Build và so sánh:
+Build và so sánh (chạy từ project root):
 ```bash
-docker build -t my-agent:advanced .
-docker images | grep my-agent
+# Quay về project root nếu chưa ở đó
+cd ../../
+
+docker build -f 02-docker/production/Dockerfile -t my-agent:advanced .
+# Linux/macOS:
+# docker images | grep my-agent
+# Windows PowerShell:
+# docker images | Select-String my-agent
 ```
+
+> Windows note: If you are using PowerShell and the `docker images | grep ...` command fails, use `Select-String` instead.
 
 ###  Exercise 2.4: Docker Compose stack
 
 **Nhiệm vụ:** Đọc `docker-compose.yml` và vẽ architecture diagram.
 
 ```bash
+# Chạy từ thư mục 02-docker/production
+cd 02-docker/production
 docker compose up
 ```
 
@@ -270,15 +288,28 @@ railway domain
 
 **Nhiệm vụ:** Test public URL với curl hoặc Postman.
 
+> Windows PowerShell note: `curl` là alias của `Invoke-WebRequest` trên PowerShell. Để dùng GNU curl, install qua `scoop install curl` hoặc dùng `Invoke-WebRequest` trực tiếp.
+
 Test:
 ```bash
 # Health check
 curl http://student-agent-domain/health
 
 # Agent endpoint
-curl http://studen-agent-domain/ask -X POST \
+curl http://student-agent-domain/ask -X POST \
   -H "Content-Type: application/json" \
   -d '{"question": ""}'
+```
+
+Windows PowerShell alternative (dùng `Invoke-WebRequest`):
+```powershell
+# Health check
+Invoke-WebRequest -Uri "http://student-agent-domain/health"
+
+# Agent endpoint
+Invoke-WebRequest -Uri "http://student-agent-domain/ask" -Method POST `
+  -Headers @{"Content-Type"="application/json"} `
+  -Body '{"question": ""}'
 ```
 
 ###  Exercise 3.2: Deploy Render (15 phút)
@@ -296,6 +327,8 @@ cd ../render
 5. Render tự động đọc `render.yaml`
 6. Set environment variables trong dashboard
 7. Deploy!
+
+> Windows note: để push code lên GitHub từ PowerShell, sử dụng Git CLI hoặc `git` command (nếu đã cài Git for Windows). Hoặc dùng GitHub Desktop GUI. Các bước 3–7 đều làm trên browser, nên không khác biệt OS.
 
 **Nhiệm vụ:** So sánh `render.yaml` với `railway.toml`. Khác nhau gì?
 
@@ -374,12 +407,22 @@ curl http://localhost:8000/token -X POST \
 ```
 
 3. Dùng token để gọi API:
+
+**Linux/macOS:**
 ```bash
 TOKEN="<token_từ_bước_2>"
 curl http://localhost:8000/ask -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"question": "Explain JWT"}'
+```
+
+**Windows PowerShell:**
+```powershell
+$TOKEN="<token_từ_bước_2>"
+Invoke-WebRequest -Uri "http://localhost:8000/ask" -Method POST `
+  -Headers @{"Authorization"="Bearer $TOKEN"; "Content-Type"="application/json"} `
+  -Body '{"question": "Explain JWT"}'
 ```
 
 ###  Exercise 4.3: Rate limiting
@@ -391,7 +434,7 @@ curl http://localhost:8000/ask -X POST \
 
 Test:
 ```bash
-# Gọi liên tục 20 lần
+# Linux/macOS:
 for i in {1..20}; do
   curl http://localhost:8000/ask -X POST \
     -H "Authorization: Bearer $TOKEN" \
@@ -400,6 +443,16 @@ for i in {1..20}; do
   echo ""
 done
 ```
+
+> **Windows PowerShell alternative:**
+> ```powershell
+> for ($i=1; $i -le 20; $i++) {
+>   Invoke-WebRequest -Uri "http://localhost:8000/ask" -Method POST `
+>     -Headers @{"Authorization"="Bearer $TOKEN"; "Content-Type"="application/json"} `
+>     -Body "{`"question`": `"Test $i`"}"
+>   Write-Host ""
+> }
+> ```
 
 Quan sát response khi hit limit.
 
@@ -536,6 +589,7 @@ signal.signal(signal.SIGTERM, shutdown_handler)
 
 Test:
 ```bash
+# Linux/macOS:
 python app.py &
 PID=$!
 
@@ -549,6 +603,26 @@ kill -TERM $PID
 
 # Quan sát: Request có hoàn thành không?
 ```
+
+> **Windows PowerShell:**
+> ```powershell
+> # Start app in background
+> $proc = Start-Process -FilePath "python" -ArgumentList "app.py" -PassThru
+> Start-Sleep -Seconds 2
+> 
+> # Send request in background
+> $reqJob = Start-Job -ScriptBlock {
+>   Invoke-WebRequest -Uri "http://localhost:8000/ask" -Method POST `
+>     -Headers @{"Content-Type"="application/json"} `
+>     -Body '{"question": "Long task"}'
+> }
+> 
+> # Kill process immediately
+> Stop-Process -Id $proc.Id -Force
+> 
+> # Check if request completed
+> Receive-Job -Job $reqJob
+> ```
 
 ###  Exercise 5.3: Stateless design
 
@@ -595,6 +669,7 @@ Quan sát:
 
 Test:
 ```bash
+# Linux/macOS:
 # Gọi 10 requests
 for i in {1..10}; do
   curl http://localhost/ask -X POST \
@@ -605,6 +680,19 @@ done
 # Check logs — requests được phân tán
 docker compose logs agent
 ```
+
+> **Windows PowerShell:**
+> ```powershell
+> # Call 10 requests
+> for ($i=1; $i -le 10; $i++) {
+>   Invoke-WebRequest -Uri "http://localhost/ask" -Method POST `
+>     -Headers @{"Content-Type"="application/json"} `
+>     -Body "{`"question`": `"Request $i`"}"
+> }
+> 
+> # Check logs
+> docker compose logs agent | Select-String "Request"
+> ```
 
 ###  Exercise 5.5: Test stateless
 
@@ -881,6 +969,131 @@ Script sẽ kiểm tra:
 
 ---
 
+## Part 7: Day 10 — Data Pipeline & Observability (40 phút)
+
+###  Objective
+
+Kết nối project Day 10 vào khóa học: sửa pipeline, clean data, triển khai expectation suite, và tạo bằng chứng before/after để đảm bảo agent Day 09/Final Project có dữ liệu đúng.
+
+###  Why it matters
+
+Day 09 multi-agent và Final Project chỉ có giá trị nếu dữ liệu nền sạch và observable. Day 10 giúp bạn:
+- Phát hiện data bug trước khi embed
+- Thiết kế quality gate và quarantine  
+- Đưa `run_id` / bằng chứng before-after vào quy trình
+- Giữ continuity với case CS + IT Helpdesk từ Day 08/09
+
+###  Setup Day 10 project
+
+```bash
+cd day10/lab
+python -m venv .venv
+```
+
+> **Windows PowerShell activation:**
+> ```powershell
+> & .venv\Scripts\Activate.ps1
+> ```
+> Or use traditional: `.venv\Scripts\activate`
+
+```bash
+pip install -r requirements.txt
+```
+
+> Windows note: `cp .env.example .env` không hoạt động. Dùng:
+> ```powershell
+> Copy-Item .env.example .env
+> ```
+
+###  Key steps
+
+**Step 1: Run baseline pipeline**
+```bash
+python etl_pipeline.py run
+```
+
+**Expected output (Windows PowerShell):**
+```
+PIPELINE_OK
+run_id=2026-06-10T09-29Z
+raw_records=247
+cleaned_records=45
+quarantine_records=202
+cleaned_csv=artifacts\cleaned\cleaned_2026-06-10T09-29Z.csv
+pydantic_validation=PASS
+expectation[min_one_row] OK (halt)
+expectation[no_empty_doc_id] OK (halt)
+expectation[refund_no_stale_14d_window] OK (halt)
+expectation[hr_leave_no_stale_10d_annual] OK (halt)
+embed_upsert count=45 collection=day10_kb
+manifest_written=artifacts\manifests\manifest_2026-06-10T09-29Z.json
+```
+
+**Step 2: Modify & extend (2-3 expectations)**
+
+Mở và chỉnh sửa:
+- `transform/cleaning_rules.py` — thêm allowlist rules
+- `quality/expectations.py` — thêm ít nhất 2 new expectations
+
+Example new expectation:
+```python
+# quality/expectations.py
+@expectation("access_control_role_valid")
+def access_control_role_valid(df: DataFrame) -> ExpectationResult:
+    """Valid roles: admin, manager, user"""
+    valid_roles = {"admin", "manager", "user"}
+    invalid = df[~df['role'].isin(valid_roles)]
+    return ExpectationResult(
+        passed=len(invalid) == 0,
+        details={"invalid_roles_count": len(invalid)}
+    )
+```
+
+**Step 3: Run retrieval evaluation**
+```bash
+python eval_retrieval.py --out artifacts/eval/eval_after_fix.csv
+```
+
+**Step 4: Run grading**
+```bash
+python grading_run.py --out artifacts/eval/grading_run.jsonl
+```
+
+###  Windows-specific: Check artifact files
+
+```powershell
+# List cleaned records
+Get-ChildItem -Path artifacts/cleaned/ | ForEach-Object { Write-Host $_.Name }
+
+# View manifest
+$manifest = Get-ChildItem -Path artifacts/manifests/ -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Get-Content $manifest.FullName | ConvertFrom-Json | Format-List
+
+# Check quarantine
+(Import-Csv artifacts/quarantine/*.csv | Measure-Object).Count
+```
+
+###  What to deliver
+
+- [ ] Pipeline chạy thành công (exit 0)
+- [ ] Thêm ít nhất 2 expectation mới vào `quality/expectations.py`
+- [ ] Có `run_id` và manifest trong `artifacts/manifests/`
+- [ ] Báo cáo before/after trong `reports/group_report.md`:
+  - Raw records: 247 → Cleaned: 45 (18% quality pass rate)
+  - Top violations: [list 5 top reasons in quarantine]
+  - Retrieval quality delta: [show eval before/after]
+
+###  Checkpoint 7
+
+- [ ] Chạy Day 10 từ project root: `cd day10\lab` (Windows) hoặc `cd day10/lab` (Mac/Linux)
+- [ ] Venv activated: `& .venv\Scripts\Activate.ps1` (Windows)
+- [ ] Pipeline OK: `python etl_pipeline.py run` → exit 0
+- [ ] Manifest exists: `artifacts/manifests/manifest_*.json`
+- [ ] 45+ documents embedded: `chroma_db/day10_kb`
+- [ ] Sửa ≥2 expectations, run lại, capture before/after metrics
+
+---
+
 ##  Hoàn Thành!
 
 Bạn đã:
@@ -889,6 +1102,32 @@ Bạn đã:
 -  Deploy lên cloud platform
 -  Bảo mật API
 -  Thiết kế hệ thống scalable và reliable
+-  Integrate data pipeline observability (Day 10)
+
+###  Cross-Day Continuity
+
+**Data Flow:**
+```
+Day 10: ETL Pipeline (clean data)
+         ↓
+     Chroma DB (vector store)
+         ↓
+Day 09: Multi-Agent (retrieves cleaned docs)
+         ↓
+Final Project: Stateless agent (uses clean vectors)
+```
+
+**Shared Context (CS + IT Helpdesk):**
+- Day 08: Build initial RAG pipeline
+- Day 09: Multi-agent supervisor-worker retrieval
+- Day 10: Data quality gates & observability ← **YOU ARE HERE**
+- Day 12 (Final): Production-ready deployment
+
+**Why Day 10 matters for Final Project:**
+- Without clean data → retrieval quality bad
+- Without expectations → can't detect regressions
+- Without `run_id` → can't trace which data version caused issue
+- Without freshness checks → serving stale answers
 
 ###  Next Steps
 
@@ -898,6 +1137,21 @@ Bạn đã:
 4. **Observability:** Distributed tracing với OpenTelemetry
 5. **Cost optimization:** Spot instances, auto-scaling
 
+###  Troubleshooting: Windows PowerShell Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Change directory | `cd .\path\to\dir` (use `\` backslashes) |
+| List files | `Get-ChildItem` or `ls` |
+| Filter grep | `Select-String "pattern"` |
+| Run venv | `. .venv\Scripts\activate` or `& .venv\Scripts\Activate.ps1` |
+| Copy file | `Copy-Item source dest` |
+| Make request | `Invoke-WebRequest -Uri ... -Method POST` |
+| Check port | `Get-NetTCPConnection -LocalPort 8000` |
+| Kill process | `Stop-Process -Name python` |
+| Background job | `Start-Job -ScriptBlock { ... }` |
+| Loop 1-N | `for ($i=1; $i -le N; $i++) { ... }` |
+
 ###  Resources
 
 - [12-Factor App](https://12factor.net/)
@@ -905,6 +1159,8 @@ Bạn đã:
 - [FastAPI Deployment](https://fastapi.tiangolo.com/deployment/)
 - [Railway Docs](https://docs.railway.app/)
 - [Render Docs](https://render.com/docs)
+- [Great Expectations](https://greatexpectations.io/)
+- [Chroma Vector DB](https://docs.trychroma.com/)
 
 ---
 
@@ -925,6 +1181,19 @@ A: Dùng volume: `volumes: - redis-data:/data` trong docker-compose.
 **Q: Làm sao scale trên Railway/Render?**  
 A: Railway: `railway scale <replicas>`. Render: Dashboard → Settings → Instances.
 
+**Q: Day 10 pipeline không chạy, lỗi gì?**  
+A: Kiểm tra:
+1. Virtual env activated: `& .venv\Scripts\Activate.ps1`
+2. Requirements installed: `pip list | Select-String "chromadb"`
+3. .env file exists: `Test-Path .env`
+4. Log file: `Get-Content artifacts/logs/run_*.log -Tail 50`
+
+**Q: Làm sao xem quarantine records?**  
+A: `Import-Csv artifacts/quarantine/*.csv | Format-Table -AutoSize`
+
+**Q: Chạy Part 1-6 rồi, giờ làm gì?**  
+A: Tiếp tục Part 7 (Day 10) để ensure data quality, sau đó combine tất cả vào Final Project trên cloud.
+
 ---
 
-**Happy Deploying! **
+**Happy Deploying! 🚀**
