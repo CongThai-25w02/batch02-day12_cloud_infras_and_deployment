@@ -22,6 +22,7 @@ WORKDIR /app
 COPY --from=builder /root/.local /home/pipeline/.local
 
 COPY api.py .
+COPY start.py .
 COPY transform/ ./transform/
 COPY quality/ ./quality/
 COPY monitoring/ ./monitoring/
@@ -42,5 +43,4 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-# Shell form so $PORT is expanded at runtime (Railway injects PORT env var)
-CMD python -m uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
+CMD ["python", "start.py"]
